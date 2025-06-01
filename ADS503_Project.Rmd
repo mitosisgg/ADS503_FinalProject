@@ -1,0 +1,102 @@
+---
+title: "ADS503_Project"
+author: "Akshat Patni"
+date: "2025-06-01"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# ADS-503 Final Project
+
+### Import Libraries
+
+```{r}
+library(tidyverse)    
+library(skimr)        
+library(corrplot)     
+library(GGally)       
+library(patchwork)  
+library(gridExtra)
+library(DataExplorer)
+```
+
+## Load Dataset
+
+```{r}
+sleep_data <- read.csv("data/Sleep_health_and_lifestyle_dataset.csv")
+
+head(sleep_data)
+```
+
+## Exploratory Data Analysis
+
+```{r}
+# Summarize Data Set
+skim(sleep_data)
+```
+
+```{r}
+#Numeric Feature Distributions
+sleep_data %>%
+  select(where(is.numeric)) %>%
+  gather() %>%
+  ggplot(aes(value)) +
+  facet_wrap(~ key, scales = "free", ncol = 3) +
+  geom_histogram(fill = "steelblue", color = "black", bins = 20) +
+  theme_minimal()
+
+```
+
+```{r}
+#Categorical Feature Distributions
+sleep_data %>%
+  select(where(is.factor), Gender, Occupation, BMI.Category, Sleep.Disorder) %>%
+  gather() %>%
+  ggplot(aes(x = value)) +
+  facet_wrap(~ key, scales = "free", ncol = 2) +
+  geom_bar(fill = "steelblue", color = "black",) +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+```
+
+```{r}
+#Correlation Matrix 
+numeric_data <- sleep_data %>%
+  select(where(is.numeric))
+
+cor_matrix <- cor(numeric_data, use = "complete.obs")
+
+corrplot(cor_matrix, method = "circle", type = "upper", tl.col = "black", tl.cex = 0.8)
+```
+
+```{r}
+#Create Binary outcome column 
+sleep_data <- sleep_data %>%
+  mutate(Has.Sleep.Disorder = ifelse(Sleep.Disorder == "None", 0, 1))
+
+```
+
+```{r}
+#Show relationship between numeric predictors and Binary outcome
+
+numeric_features <- sleep_data %>%
+  select(where(is.numeric)) %>%
+  select(-Person.ID, -Has.Sleep.Disorder) %>%
+  names()
+
+plot_list <- lapply(numeric_features, function(feature) {
+  ggplot(sleep_data, aes(x = factor(Has.Sleep.Disorder), y = .data[[feature]], fill = factor(Has.Sleep.Disorder))) +
+    geom_boxplot() +
+    labs(title = feature, x = "Has Sleep Disorder", y = feature) +
+    theme_minimal() +
+    theme(legend.position = "none")
+})
+
+grid.arrange(grobs = plot_list, ncol = 3, nrow = ceiling(length(plot_list)/3))
+
+
+```

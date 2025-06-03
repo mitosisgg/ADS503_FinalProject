@@ -21,6 +21,7 @@ library(GGally)
 library(patchwork)  
 library(gridExtra)
 library(DataExplorer)
+library(caret)
 ```
 
 ## Load Dataset
@@ -98,5 +99,26 @@ plot_list <- lapply(numeric_features, function(feature) {
 
 grid.arrange(grobs = plot_list, ncol = 3, nrow = ceiling(length(plot_list)/3))
 
+
+```
+
+```{r}
+# Data splitting
+# Set seed for reproducibility
+set.seed(123)
+
+# Create a binary outcome
+sleep_data$Has.Sleep.Disorder <- ifelse(sleep_data$Sleep.Disorder == "None", 0, 1)
+
+# Stratified sampling based on the binary outcome
+split_index <- createDataPartition(sleep_data$Has.Sleep.Disorder, p = 0.75, list = FALSE)
+
+# Split the dataset
+train_data <- sleep_data[split_index, ]
+test_data <- sleep_data[-split_index, ]
+
+# Confirm class distribution is preserved
+prop.table(table(train_data$Has.Sleep.Disorder))
+prop.table(table(test_data$Has.Sleep.Disorder))
 
 ```

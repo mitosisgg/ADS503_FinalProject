@@ -101,3 +101,14 @@ grid.arrange(grobs = plot_list, ncol = 3, nrow = ceiling(length(plot_list)/3))
 
 
 ```
+
+## Pre-processing
+
+```{r}
+# impute with KNN, center, and scale the data
+preprocess_model <- preProcess(X.train, method = c("knnImpute")
+
+# apply preprocess to train and test sets
+X.train.pp <- predict(preprocess_model, newdata = X.train)
+X.test.pp <- predict(preprocess_model, newdata = X.test)
+```

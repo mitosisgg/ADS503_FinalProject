@@ -78,11 +78,12 @@ corrplot(cor_matrix, method = "circle", type = "upper", tl.col = "black", tl.cex
 sleep_data <- sleep_data %>%
   mutate(Has.Sleep.Disorder = ifelse(Sleep.Disorder == "None", 0, 1))
 
+# Inspect class ratio
+table(sleep_data$Has.Sleep.Disorder)
 ```
 
 ```{r}
 #Show relationship between numeric predictors and Binary outcome
-
 numeric_features <- sleep_data %>%
   select(where(is.numeric)) %>%
   select(-Person.ID, -Has.Sleep.Disorder) %>%

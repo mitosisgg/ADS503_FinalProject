@@ -22,12 +22,23 @@ library(patchwork)
 library(gridExtra)
 library(DataExplorer)
 library(caret)
+library(dplyr)
+library(tidyr)
+library(pROC)
 ```
 
 ## Load Dataset
 
 ```{r}
 sleep_data <- read.csv("data/Sleep_health_and_lifestyle_dataset.csv")
+sleep_data <- sleep_data %>%
+  separate(Blood.Pressure, into = c("Systolic", "Diastolic"), sep = "/", convert = TRUE)
+
+occupation_levels <- unique(sleep_data$Occupation)
+sleep_data$Occupation <- factor(sleep_data$Occupation, levels = occupation_levels)
+
+bmi_levels <- unique(sleep_data$BMI.Category)
+sleep_data$BMI.Category <- factor(sleep_data$BMI.Category, levels = bmi_levels)
 
 head(sleep_data)
 ```
@@ -45,7 +56,7 @@ sleep_data %>%
   select(where(is.numeric)) %>%
   gather() %>%
   ggplot(aes(value)) +
-  facet_wrap(~ key, scales = "free", ncol = 3) +
+  facet_wrap(~ key, scales = "free", ncol = 4) +
   geom_histogram(fill = "steelblue", color = "black", bins = 20) +
   theme_minimal()
 
@@ -127,4 +138,117 @@ prop.table(table(val_data$Has.Sleep.Disorder))
 prop.table(table(test_data$Has.Sleep.Disorder))
 
 
+```
+
+## Model Development 
+
+### Setup 
+
+```{r}
+
+X_train <- train_data %>% select(-1, -(ncol(.)-1), -(ncol(.)))
+
+y_train <- train_data %>% pull(last_col()) %>% factor(levels = c(0, 1), labels = c("No", "Yes"))
+
+X_val <- val_data %>% select(-1, -(ncol(.)-1), -(ncol(.)))
+y_val <- val_data %>% pull(last_col()) %>% factor(levels = c(0, 1), labels = c("No", "Yes"))
+
+X_test <- test_data %>% select(-1, -(ncol(.)-1), -(ncol(.)))
+y_test <- test_data %>% pull(last_col()) %>% factor(levels = c(0, 1), labels = c("No", "Yes"))
+
+ctrl <- trainControl(method = "cv",
+                     summaryFunction = twoClassSummary,
+                     classProbs = TRUE,
+                     savePredictions = TRUE)
+                     
+eval_df <- data.frame(
+  Model = character(),
+  Accuracy = numeric(),
+  Error_Rate = numeric(),
+  Specificity = numeric(),
+  Sensitivity = numeric(),
+  Precision = numeric(),
+  Recall = numeric(),
+  F1_Score = numeric(),
+  AUC = numeric(),
+  stringsAsFactors = FALSE
+)
+```
+
+### Neural Network
+
+```{r, message=FALSE, warning=FALSE}
+#Train Model
+nnetGrid <- expand.grid(decay = c(0, 0.01, .1, .5, 1), 
+                        size = c(1, 3, 7, 11, 13))
+max_size <- max(nnetGrid$size)
+
+num_inputs <- ncol(X_train)  
+num_hidden <- max_size       
+num_outputs <- length(levels(y_train))  
+
+max_weights_needed <- (num_inputs + 1) * num_hidden + (num_hidden + 1) * num_outputs
+
+set.seed(123)
+nnet_model <- train(x = X_train, y = y_train,
+                    method = "nnet",
+                    tuneGrid = nnetGrid,
+                    trControl = ctrl,
+                    metric = "ROC",
+                    linout = FALSE,
+                    trace = FALSE,
+                    MaxNWts = max_weights_needed,
+                    maxit = 1000)
+
+#Predict on val data
+nnet_preds <- predict(nnet_model, X_val)
+nnet_obs <- y_val
+nnet_preds <- factor(nnet_preds, levels = c("No", "Yes"))
+nnet_obs   <- factor(nnet_obs,   levels = c("No", "Yes"))
+
+nnet_probs <- predict(nnet_model, X_val, type = "prob")[, "Yes"]
+
+#Calculate metrics for eval_df
+nnet_cm <- confusionMatrix(nnet_preds, nnet_obs, positive = "Yes")
+
+nnet_accuracy <- nnet_cm$overall["Accuracy"]
+nnet_error_rate <- 1 - nnet_accuracy
+nnet_sensitivity <- nnet_cm$byClass["Sensitivity"]
+nnet_specificity <- nnet_cm$byClass["Specificity"]
+nnet_precision <- nnet_cm$byClass["Precision"]
+nnet_recall <- nnet_sensitivity
+nnet_f1 <- nnet_cm$byClass["F1"]
+
+nnet_roc <- roc(response = nnet_obs, predictor = nnet_probs)
+nnet_auc <- auc(nnet_roc)
+
+eval_df <- rbind(eval_df, data.frame(
+  Model       = "Neural Network",
+  Accuracy    = as.numeric(nnet_accuracy),
+  Error_Rate  = as.numeric(nnet_error_rate),
+  Specificity = as.numeric(nnet_specificity),
+  Sensitivity = as.numeric(nnet_sensitivity),
+  Precision   = as.numeric(nnet_precision),
+  Recall      = as.numeric(nnet_recall),
+  F1_Score    = as.numeric(nnet_f1),
+  AUC         = as.numeric(nnet_auc),
+  stringsAsFactors = FALSE
+))
+
+#Print Confusion Matrix 
+nnet_cm
+
+#Plot ROC Curve
+plot(nnet_roc, main = "Neural Network ROC Curve", col = "steelblue", lwd = 3, xlim = c(1,0), ylim = c(0,1))
+abline(a = 0, b = 1, lty = 2, col = "gray")  
+text(0.6, 0.2, paste0("AUC = ", round(nnet_auc, 3)), cex = 1.2)
+
+```
+
+### \*\*\*\*\*\*\*\*\*\*\*\***Add Additional Models here**
+
+## Model Evaluation 
+
+```{r}
+eval_df
 ```

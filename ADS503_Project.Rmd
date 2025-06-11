@@ -1,6 +1,6 @@
 ---
 title: "ADS503_Project"
-author: "Akshat Patni"
+author: "Christian Lee, Askhat Patni, Gagandeep Singh"
 date: "2025-06-01"
 output: html_document
 ---

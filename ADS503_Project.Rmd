@@ -21,6 +21,7 @@ library(GGally)
 library(patchwork)  
 library(gridExtra)
 library(DataExplorer)
+library(randomForest)
 library(caret)
 library(dplyr)
 library(tidyr)
@@ -244,7 +245,60 @@ abline(a = 0, b = 1, lty = 2, col = "gray")
 text(0.6, 0.2, paste0("AUC = ", round(nnet_auc, 3)), cex = 1.2)
 
 ```
+### RANDOM FOREST
 
+```{r}
+# Train Random Forest Model using caret
+set.seed(123)
+rf_model <- train(
+  x = X_train,
+  y = y_train,
+  method = "rf",
+  trControl = ctrl,
+  metric = "ROC"
+)
+
+# Predict on validation set
+rf_preds <- predict(rf_model, X_val)
+rf_probs <- predict(rf_model, X_val, type = "prob")[, "Yes"]
+
+# Evaluate performance
+rf_cm <- confusionMatrix(rf_preds, y_val, positive = "Yes")
+
+rf_accuracy <- rf_cm$overall["Accuracy"]
+rf_error_rate <- 1 - rf_accuracy
+rf_sensitivity <- rf_cm$byClass["Sensitivity"]
+rf_specificity <- rf_cm$byClass["Specificity"]
+rf_precision <- rf_cm$byClass["Precision"]
+rf_recall <- rf_sensitivity
+rf_f1 <- rf_cm$byClass["F1"]
+
+rf_roc <- roc(response = y_val, predictor = rf_probs)
+rf_auc <- auc(rf_roc)
+
+# Add to evaluation data frame
+eval_df <- rbind(eval_df, data.frame(
+  Model       = "Random Forest",
+  Accuracy    = as.numeric(rf_accuracy),
+  Error_Rate  = as.numeric(rf_error_rate),
+  Specificity = as.numeric(rf_specificity),
+  Sensitivity = as.numeric(rf_sensitivity),
+  Precision   = as.numeric(rf_precision),
+  Recall      = as.numeric(rf_recall),
+  F1_Score    = as.numeric(rf_f1),
+  AUC         = as.numeric(rf_auc),
+  stringsAsFactors = FALSE
+))
+
+# Print Confusion Matrix
+rf_cm
+
+# Plot ROC Curve
+plot(rf_roc, main = "Random Forest ROC Curve", col = "darkgreen", lwd = 3, xlim = c(1,0), ylim = c(0,1))
+abline(a = 0, b = 1, lty = 2, col = "gray")
+text(0.6, 0.2, paste0("AUC = ", round(rf_auc, 3)), cex = 1.2)
+
+```
 ### \*\*\*\*\*\*\*\*\*\*\*\***Add Additional Models here**
 
 ## Model Evaluation 

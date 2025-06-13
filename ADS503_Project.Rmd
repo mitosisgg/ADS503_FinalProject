@@ -22,6 +22,7 @@ library(patchwork)
 library(gridExtra)
 library(DataExplorer)
 library(caret)
+library(pROC)
 ```
 
 ## Load Dataset
@@ -48,7 +49,6 @@ sleep_data |>
   facet_wrap(~ key, scales = "free", ncol = 3) +
   geom_histogram(fill = "steelblue", color = "black", bins = 20) +
   theme_minimal()
-
 ```
 
 ```{r}
@@ -61,7 +61,6 @@ sleep_data |>
   geom_bar(fill = "steelblue", color = "black",) +
   theme_minimal() +
   theme(axis.text.x = element_text(angle = 45, hjust = 1))
-
 ```
 
 ```{r}
@@ -99,8 +98,6 @@ plot_list <- lapply(numeric_features, function(feature) {
 })
 
 grid.arrange(grobs = plot_list, ncol = 3, nrow = ceiling(length(plot_list)/3))
-
-
 ```
 
 ## Feature Engineering
@@ -137,9 +134,9 @@ df <- df |> select(-Blood.Pressure, -Person.ID, -Gender, -Occupation, -BMI.Categ
 set.seed(123)
 
 # Initial stratified split: 75% for training + validation, 25% for testing
-train_idx <- createDataPartition(sleep_data$Has.Sleep.Disorder, p = 0.75, list = FALSE)
-train_val_data <- sleep_data[train_idx, ]
-test_data <- sleep_data[-train_idx, ]
+train_idx <- createDataPartition(df$Has.Sleep.Disorder, p = 0.75, list = FALSE)
+train_val_data <- df[train_idx, ]
+test_data <- df[-train_idx, ]
 
 # Second stratified split: 80% of train_val_data for training, 20% for validation
 val_idx <- createDataPartition(train_val_data$Has.Sleep.Disorder, p = 0.8, list = FALSE)
@@ -174,7 +171,7 @@ ctrl <- trainControl(method = "cv",
                      classProbs = TRUE,
                      savePredictions = TRUE)
 
-# evaluation metrics dataframe                     
+# evaluation metrics data frame                     
 eval_df <- data.frame(
   Model = character(),
   Accuracy = numeric(),
@@ -188,6 +185,71 @@ eval_df <- data.frame(
   stringsAsFactors = FALSE
 )
 ```
+
+### Logistic Regression
+
+```{r, message=FALSE, warning=FALSE}
+# Train the model
+logit_model <- train(
+     x = X_train,
+     y = y_train,
+     metric = "ROC",
+     method = "glm",
+     family = "binomial",
+     preProcess = c("zv", "center", "scale"),
+     trControl = ctrl
+)
+
+# Confusion Matrix
+logit_cm <- confusionMatrix(
+  logit_model$pred$pred, 
+  logit_model$pred$obs
+)
+
+#Predict on val data
+logit_preds <- predict(logit_model, X_val)
+logit_obs <- y_val
+logit_preds <- factor(logit_preds, levels = c("No", "Yes"))
+logit_obs   <- factor(logit_obs,   levels = c("No", "Yes"))
+
+logit_probs <- predict(logit_model, X_val, type = "prob")[, "Yes"]
+
+logit_accuracy <- logit_cm$overall["Accuracy"]
+logit_error_rate <- 1 - logit_accuracy
+logit_sensitivity <- logit_cm$byClass["Sensitivity"]
+logit_specificity <- logit_cm$byClass["Specificity"]
+logit_precision <- logit_cm$byClass["Precision"]
+logit_recall <- logit_sensitivity
+logit_f1 <- logit_cm$byClass["F1"]
+
+# ROC
+logit_roc <- roc(logit_model$pred$obs, logit_model$pred$Yes)
+logit_auc <- auc(logit_roc)
+
+# Add eval metrics to summary df
+eval_df <- rbind(eval_df, data.frame(
+  Model       = "Logistic Regression",
+  Accuracy    = as.numeric(logit_accuracy),
+  Error_Rate  = as.numeric(logit_error_rate),
+  Specificity = as.numeric(logit_specificity),
+  Sensitivity = as.numeric(logit_sensitivity),
+  Precision   = as.numeric(logit_precision),
+  Recall      = as.numeric(logit_recall),
+  F1_Score    = as.numeric(logit_f1),
+  AUC         = as.numeric(logit_auc),
+  stringsAsFactors = FALSE
+))
+
+# Print confusion matrix
+logit_cm
+
+#Plot ROC Curve
+plot(logit_roc, main = "Logit ROC Curve", col = "purple", lwd = 3, xlim = c(1,0), ylim = c(0,1))
+abline(a = 0, b = 1, lty = 2, col = "gray")  
+text(0.6, 0.2, paste0("AUC = ", round(logit_auc, 3)), cex = 1.2)
+```
+
+
 
 ### Neural Network
 
@@ -222,7 +284,9 @@ nnet_preds <- factor(nnet_preds, levels = c("No", "Yes"))
 nnet_obs   <- factor(nnet_obs,   levels = c("No", "Yes"))
 
 nnet_probs <- predict(nnet_model, X_val, type = "prob")[, "Yes"]
+```
 
+```{r}
 #Calculate metrics for eval_df
 nnet_cm <- confusionMatrix(nnet_preds, nnet_obs, positive = "Yes")
 
@@ -257,8 +321,10 @@ nnet_cm
 plot(nnet_roc, main = "Neural Network ROC Curve", col = "steelblue", lwd = 3, xlim = c(1,0), ylim = c(0,1))
 abline(a = 0, b = 1, lty = 2, col = "gray")  
 text(0.6, 0.2, paste0("AUC = ", round(nnet_auc, 3)), cex = 1.2)
-
 ```
+
+
+
 ### RANDOM FOREST
 
 ```{r}
@@ -318,6 +384,5 @@ text(0.6, 0.2, paste0("AUC = ", round(rf_auc, 3)), cex = 1.2)
 ## Model Evaluation 
 
 ```{r}
-eval_df
+eval_df |> arrange(desc(F1_Score))
 ```
->>>>>>> Stashed changes

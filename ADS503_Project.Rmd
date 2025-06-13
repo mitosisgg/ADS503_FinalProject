@@ -13,7 +13,7 @@ knitr::opts_chunk$set(echo = TRUE)
 
 ### Import Libraries
 
-```{r}
+```{r, message=FALSE, warning=FALSE}
 library(tidyverse)    
 library(skimr)        
 library(corrplot)     
@@ -23,8 +23,6 @@ library(gridExtra)
 library(DataExplorer)
 library(randomForest)
 library(caret)
-library(dplyr)
-library(tidyr)
 library(pROC)
 ```
 
@@ -53,32 +51,30 @@ skim(sleep_data)
 
 ```{r}
 #Numeric Feature Distributions
-sleep_data %>%
-  select(where(is.numeric)) %>%
-  gather() %>%
+sleep_data |>
+  select(where(is.numeric)) |>
+  gather() |>
   ggplot(aes(value)) +
   facet_wrap(~ key, scales = "free", ncol = 4) +
   geom_histogram(fill = "steelblue", color = "black", bins = 20) +
   theme_minimal()
-
 ```
 
 ```{r}
 #Categorical Feature Distributions
-sleep_data %>%
-  select(where(is.factor), Gender, Occupation, BMI.Category, Sleep.Disorder) %>%
-  gather() %>%
+sleep_data |>
+  select(where(is.factor), Gender, Occupation, BMI.Category, Sleep.Disorder) |>
+  gather() |>
   ggplot(aes(x = value)) +
   facet_wrap(~ key, scales = "free", ncol = 2) +
   geom_bar(fill = "steelblue", color = "black",) +
   theme_minimal() +
   theme(axis.text.x = element_text(angle = 45, hjust = 1))
-
 ```
 
 ```{r}
 #Correlation Matrix 
-numeric_data <- sleep_data %>%
+numeric_data <- sleep_data |>
   select(where(is.numeric))
 
 cor_matrix <- cor(numeric_data, use = "complete.obs")
@@ -88,7 +84,7 @@ corrplot(cor_matrix, method = "circle", type = "upper", tl.col = "black", tl.cex
 
 ```{r}
 #Create Binary outcome column 
-sleep_data <- sleep_data %>%
+sleep_data <- sleep_data |>
   mutate(Has.Sleep.Disorder = ifelse(Sleep.Disorder == "None", 0, 1))
 
 # Inspect class ratio
@@ -97,9 +93,9 @@ table(sleep_data$Has.Sleep.Disorder)
 
 ```{r}
 #Show relationship between numeric predictors and Binary outcome
-numeric_features <- sleep_data %>%
-  select(where(is.numeric)) %>%
-  select(-Person.ID, -Has.Sleep.Disorder) %>%
+numeric_features <- sleep_data |>
+  select(where(is.numeric)) |>
+  select(-Person.ID, -Has.Sleep.Disorder) |>
   names()
 
 plot_list <- lapply(numeric_features, function(feature) {
@@ -111,41 +107,50 @@ plot_list <- lapply(numeric_features, function(feature) {
 })
 
 grid.arrange(grobs = plot_list, ncol = 3, nrow = ceiling(length(plot_list)/3))
-
-
 ```
 
-
-## Pre-processing
-
+## Feature Engineering
 ```{r}
-# impute with KNN, center, and scale the data
-preprocess_model <- preProcess(X.train, method = c("knnImpute")
+# create systolic and diastolic features from Blood.Pressure
+split_bp <- do.call(rbind, strsplit(sleep_data$Blood.Pressure, "/"))
+sleep_data$Systolic <- as.numeric(split_bp[, 1])
+sleep_data$Diastolic <- as.numeric(split_bp[, 2])
 
-# apply preprocess to train and test sets
-X.train.pp <- predict(preprocess_model, newdata = X.train)
-X.test.pp <- predict(preprocess_model, newdata = X.test)
+# create dummy variables for categorical features (Gender, Occupation, BMI.Category)
+predictors <- sleep_data |> select(-Has.Sleep.Disorder)
+dummy_model <- dummyVars(~ Gender + Occupation + BMI.Category, data = predictors)
+
+# Apply it to your data
+dummy_data <- predict(dummy_model, newdata = predictors)
+
+# Convert to data frame if needed
+dummy_data <- as.data.frame(dummy_data)
+
+# Add encoded data back to the data set
+df <- bind_cols(dummy_data, sleep_data)
+
+# drop the unused features
+df <- df |> select(-Blood.Pressure, -Person.ID, -Gender, -Occupation, -BMI.Category, -Sleep.Disorder)
 ```
 
+
+
+## Data splitting
 
 ```{r}
 # Data splitting
 # Set seed for reproducibility
-
 set.seed(123)
 
-# Create binary target variable
-sleep_data$Has.Sleep.Disorder <- ifelse(sleep_data$Sleep.Disorder == "None", 0, 1)
-
 # Initial stratified split: 75% for training + validation, 25% for testing
-initial_split <- createDataPartition(sleep_data$Has.Sleep.Disorder, p = 0.75, list = FALSE)
-train_val_data <- sleep_data[initial_split, ]
-test_data <- sleep_data[-initial_split, ]
+train_idx <- createDataPartition(df$Has.Sleep.Disorder, p = 0.75, list = FALSE)
+train_val_data <- df[train_idx, ]
+test_data <- df[-train_idx, ]
 
 # Second stratified split: 80% of train_val_data for training, 20% for validation
-train_split <- createDataPartition(train_val_data$Has.Sleep.Disorder, p = 0.8, list = FALSE)
-train_data <- train_val_data[train_split, ]
-val_data <- train_val_data[-train_split, ]
+val_idx <- createDataPartition(train_val_data$Has.Sleep.Disorder, p = 0.8, list = FALSE)
+train_data <- train_val_data[val_idx, ]
+val_data <- train_val_data[-val_idx, ]
 
 # Check proportions
 prop.table(table(train_data$Has.Sleep.Disorder))
@@ -158,22 +163,24 @@ prop.table(table(test_data$Has.Sleep.Disorder))
 ### Setup 
 
 ```{r}
+# separate predictors from target in train, val and test sets
+X_train <- train_data |> select(-Has.Sleep.Disorder) 
+y_train <- train_data |> pull(Has.Sleep.Disorder) |> factor(levels = c(0, 1), labels = c("No", "Yes"))
 
-X_train <- train_data %>% select(-1, -(ncol(.)-1), -(ncol(.)))
+X_val <- val_data |> select(-Has.Sleep.Disorder)
+y_val <- val_data |> pull(Has.Sleep.Disorder) |> factor(levels = c(0, 1), labels = c("No", "Yes"))
 
-y_train <- train_data %>% pull(last_col()) %>% factor(levels = c(0, 1), labels = c("No", "Yes"))
+X_test <- test_data |> select(-Has.Sleep.Disorder)
+y_test <- test_data |> pull(Has.Sleep.Disorder) |> factor(levels = c(0, 1), labels = c("No", "Yes"))
 
-X_val <- val_data %>% select(-1, -(ncol(.)-1), -(ncol(.)))
-y_val <- val_data %>% pull(last_col()) %>% factor(levels = c(0, 1), labels = c("No", "Yes"))
-
-X_test <- test_data %>% select(-1, -(ncol(.)-1), -(ncol(.)))
-y_test <- test_data %>% pull(last_col()) %>% factor(levels = c(0, 1), labels = c("No", "Yes"))
-
+# define train controls
 ctrl <- trainControl(method = "cv",
+                     number = 5,
                      summaryFunction = twoClassSummary,
                      classProbs = TRUE,
                      savePredictions = TRUE)
-                     
+
+# evaluation metrics data frame                     
 eval_df <- data.frame(
   Model = character(),
   Accuracy = numeric(),
@@ -186,6 +193,69 @@ eval_df <- data.frame(
   AUC = numeric(),
   stringsAsFactors = FALSE
 )
+```
+
+### Logistic Regression
+
+```{r, message=FALSE, warning=FALSE}
+# Train the model
+logit_model <- train(
+     x = X_train,
+     y = y_train,
+     metric = "ROC",
+     method = "glm",
+     family = "binomial",
+     preProcess = c("zv", "center", "scale"),
+     trControl = ctrl
+)
+
+# Confusion Matrix
+logit_cm <- confusionMatrix(
+  logit_model$pred$pred, 
+  logit_model$pred$obs
+)
+
+#Predict on val data
+logit_preds <- predict(logit_model, X_val)
+logit_obs <- y_val
+logit_preds <- factor(logit_preds, levels = c("No", "Yes"))
+logit_obs   <- factor(logit_obs,   levels = c("No", "Yes"))
+
+logit_probs <- predict(logit_model, X_val, type = "prob")[, "Yes"]
+
+logit_accuracy <- logit_cm$overall["Accuracy"]
+logit_error_rate <- 1 - logit_accuracy
+logit_sensitivity <- logit_cm$byClass["Sensitivity"]
+logit_specificity <- logit_cm$byClass["Specificity"]
+logit_precision <- logit_cm$byClass["Precision"]
+logit_recall <- logit_sensitivity
+logit_f1 <- logit_cm$byClass["F1"]
+
+# ROC
+logit_roc <- roc(logit_model$pred$obs, logit_model$pred$Yes)
+logit_auc <- auc(logit_roc)
+
+# Add eval metrics to summary df
+eval_df <- rbind(eval_df, data.frame(
+  Model       = "Logistic Regression",
+  Accuracy    = as.numeric(logit_accuracy),
+  Error_Rate  = as.numeric(logit_error_rate),
+  Specificity = as.numeric(logit_specificity),
+  Sensitivity = as.numeric(logit_sensitivity),
+  Precision   = as.numeric(logit_precision),
+  Recall      = as.numeric(logit_recall),
+  F1_Score    = as.numeric(logit_f1),
+  AUC         = as.numeric(logit_auc),
+  stringsAsFactors = FALSE
+))
+
+# Print confusion matrix
+logit_cm
+
+#Plot ROC Curve
+plot(logit_roc, main = "Logit ROC Curve", col = "purple", lwd = 3, xlim = c(1,0), ylim = c(0,1))
+abline(a = 0, b = 1, lty = 2, col = "gray")  
+text(0.6, 0.2, paste0("AUC = ", round(logit_auc, 3)), cex = 1.2)
 ```
 
 ### Neural Network
@@ -205,6 +275,7 @@ max_weights_needed <- (num_inputs + 1) * num_hidden + (num_hidden + 1) * num_out
 set.seed(123)
 nnet_model <- train(x = X_train, y = y_train,
                     method = "nnet",
+                    preProcess = c("center", "scale"),
                     tuneGrid = nnetGrid,
                     trControl = ctrl,
                     metric = "ROC",
@@ -255,8 +326,8 @@ nnet_cm
 plot(nnet_roc, main = "Neural Network ROC Curve", col = "steelblue", lwd = 3, xlim = c(1,0), ylim = c(0,1))
 abline(a = 0, b = 1, lty = 2, col = "gray")  
 text(0.6, 0.2, paste0("AUC = ", round(nnet_auc, 3)), cex = 1.2)
-
 ```
+
 ### RANDOM FOREST
 
 ```{r}
@@ -311,10 +382,8 @@ abline(a = 0, b = 1, lty = 2, col = "gray")
 text(0.6, 0.2, paste0("AUC = ", round(rf_auc, 3)), cex = 1.2)
 
 ```
-### \*\*\*\*\*\*\*\*\*\*\*\***Add Additional Models here**
 
 ## Model Evaluation 
-
 ```{r}
-eval_df
+eval_df |> arrange(desc(F1_Score))
 ```

@@ -30,14 +30,6 @@ library(pROC)
 
 ```{r}
 sleep_data <- read.csv("data/Sleep_health_and_lifestyle_dataset.csv")
-sleep_data <- sleep_data %>%
-  separate(Blood.Pressure, into = c("Systolic", "Diastolic"), sep = "/", convert = TRUE)
-
-occupation_levels <- unique(sleep_data$Occupation)
-sleep_data$Occupation <- factor(sleep_data$Occupation, levels = occupation_levels)
-
-bmi_levels <- unique(sleep_data$BMI.Category)
-sleep_data$BMI.Category <- factor(sleep_data$BMI.Category, levels = bmi_levels)
 
 head(sleep_data)
 ```

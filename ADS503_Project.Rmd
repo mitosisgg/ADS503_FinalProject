@@ -21,6 +21,7 @@ library(GGally)
 library(patchwork)  
 library(gridExtra)
 library(DataExplorer)
+library(randomForest)
 library(caret)
 library(pROC)
 ```
@@ -29,6 +30,14 @@ library(pROC)
 
 ```{r}
 sleep_data <- read.csv("data/Sleep_health_and_lifestyle_dataset.csv")
+sleep_data <- sleep_data %>%
+  separate(Blood.Pressure, into = c("Systolic", "Diastolic"), sep = "/", convert = TRUE)
+
+occupation_levels <- unique(sleep_data$Occupation)
+sleep_data$Occupation <- factor(sleep_data$Occupation, levels = occupation_levels)
+
+bmi_levels <- unique(sleep_data$BMI.Category)
+sleep_data$BMI.Category <- factor(sleep_data$BMI.Category, levels = bmi_levels)
 
 head(sleep_data)
 ```
@@ -46,7 +55,7 @@ sleep_data |>
   select(where(is.numeric)) |>
   gather() |>
   ggplot(aes(value)) +
-  facet_wrap(~ key, scales = "free", ncol = 3) +
+  facet_wrap(~ key, scales = "free", ncol = 4) +
   geom_histogram(fill = "steelblue", color = "black", bins = 20) +
   theme_minimal()
 ```
@@ -249,8 +258,6 @@ abline(a = 0, b = 1, lty = 2, col = "gray")
 text(0.6, 0.2, paste0("AUC = ", round(logit_auc, 3)), cex = 1.2)
 ```
 
-
-
 ### Neural Network
 
 ```{r, message=FALSE, warning=FALSE}
@@ -284,9 +291,7 @@ nnet_preds <- factor(nnet_preds, levels = c("No", "Yes"))
 nnet_obs   <- factor(nnet_obs,   levels = c("No", "Yes"))
 
 nnet_probs <- predict(nnet_model, X_val, type = "prob")[, "Yes"]
-```
 
-```{r}
 #Calculate metrics for eval_df
 nnet_cm <- confusionMatrix(nnet_preds, nnet_obs, positive = "Yes")
 
@@ -322,8 +327,6 @@ plot(nnet_roc, main = "Neural Network ROC Curve", col = "steelblue", lwd = 3, xl
 abline(a = 0, b = 1, lty = 2, col = "gray")  
 text(0.6, 0.2, paste0("AUC = ", round(nnet_auc, 3)), cex = 1.2)
 ```
-
-
 
 ### RANDOM FOREST
 
@@ -380,9 +383,7 @@ text(0.6, 0.2, paste0("AUC = ", round(rf_auc, 3)), cex = 1.2)
 
 ```
 
-
 ## Model Evaluation 
-
 ```{r}
 eval_df |> arrange(desc(F1_Score))
 ```

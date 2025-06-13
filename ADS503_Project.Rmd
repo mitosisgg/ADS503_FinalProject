@@ -41,9 +41,9 @@ skim(sleep_data)
 
 ```{r}
 #Numeric Feature Distributions
-sleep_data %>%
-  select(where(is.numeric)) %>%
-  gather() %>%
+sleep_data |>
+  select(where(is.numeric)) |>
+  gather() |>
   ggplot(aes(value)) +
   facet_wrap(~ key, scales = "free", ncol = 3) +
   geom_histogram(fill = "steelblue", color = "black", bins = 20) +
@@ -53,9 +53,9 @@ sleep_data %>%
 
 ```{r}
 #Categorical Feature Distributions
-sleep_data %>%
-  select(where(is.factor), Gender, Occupation, BMI.Category, Sleep.Disorder) %>%
-  gather() %>%
+sleep_data |>
+  select(where(is.factor), Gender, Occupation, BMI.Category, Sleep.Disorder) |>
+  gather() |>
   ggplot(aes(x = value)) +
   facet_wrap(~ key, scales = "free", ncol = 2) +
   geom_bar(fill = "steelblue", color = "black",) +
@@ -66,7 +66,7 @@ sleep_data %>%
 
 ```{r}
 #Correlation Matrix 
-numeric_data <- sleep_data %>%
+numeric_data <- sleep_data |>
   select(where(is.numeric))
 
 cor_matrix <- cor(numeric_data, use = "complete.obs")
@@ -76,7 +76,7 @@ corrplot(cor_matrix, method = "circle", type = "upper", tl.col = "black", tl.cex
 
 ```{r}
 #Create Binary outcome column 
-sleep_data <- sleep_data %>%
+sleep_data <- sleep_data |>
   mutate(Has.Sleep.Disorder = ifelse(Sleep.Disorder == "None", 0, 1))
 
 # Inspect class ratio
@@ -85,9 +85,9 @@ table(sleep_data$Has.Sleep.Disorder)
 
 ```{r}
 #Show relationship between numeric predictors and Binary outcome
-numeric_features <- sleep_data %>%
-  select(where(is.numeric)) %>%
-  select(-Person.ID, -Has.Sleep.Disorder) %>%
+numeric_features <- sleep_data |>
+  select(where(is.numeric)) |>
+  select(-Person.ID, -Has.Sleep.Disorder) |>
   names()
 
 plot_list <- lapply(numeric_features, function(feature) {
@@ -102,6 +102,32 @@ grid.arrange(grobs = plot_list, ncol = 3, nrow = ceiling(length(plot_list)/3))
 
 
 ```
+
+## Feature Engineering
+```{r}
+# create systolic and diastolic features from Blood.Pressure
+split_bp <- do.call(rbind, strsplit(sleep_data$Blood.Pressure, "/"))
+sleep_data$Systolic <- as.numeric(split_bp[, 1])
+sleep_data$Diastolic <- as.numeric(split_bp[, 2])
+
+# create dummy variables for categorical features (Gender, Occupation, BMI.Category)
+predictors <- sleep_data |> select(-Has.Sleep.Disorder)
+dummy_model <- dummyVars(~ Gender + Occupation + BMI.Category, data = predictors)
+
+# Apply it to your data
+dummy_data <- predict(dummy_model, newdata = predictors)
+
+# Convert to data frame if needed
+dummy_data <- as.data.frame(dummy_data)
+
+# Add encoded data back to the data set
+df <- bind_cols(dummy_data, sleep_data)
+
+# drop the unused features
+df <- df |> select(-Blood.Pressure, -Person.ID, -Gender, -Occupation, -BMI.Category, -Sleep.Disorder)
+```
+
+
 
 ## Data splitting
 
@@ -126,38 +152,24 @@ prop.table(table(val_data$Has.Sleep.Disorder))
 prop.table(table(test_data$Has.Sleep.Disorder))
 ```
 
-
-## Pre-processing
-
-```{r}
-# impute with KNN, center, and scale the data
-preprocess_model_train <- preProcess(train_data, method = c("knnImpute"))
-preprocess_model_val <- preProcess(val_data, method = c("knnImpute"))
-preprocess_model_test <- preProcess(test_data, method = c("knnImpute"))
-
-# apply preprocess to train, val, and test sets
-train_data <- predict(preprocess_model_train, newdata = train_data)
-val_data <- predict(preprocess_model_val, newdata = val_data)
-test_data <- predict(preprocess_model_test, newdata = test_data)
-```
-
 ## Model Development 
 
 ### Setup 
 
 ```{r}
 # separate predictors from target in train, val and test sets
-X_train <- train_data %>% select(-1, -(ncol(.)-1), -(ncol(.)))
-y_train <- train_data %>% pull(last_col()) %>% factor(levels = c(0, 1), labels = c("No", "Yes"))
+X_train <- train_data |> select(-Has.Sleep.Disorder) 
+y_train <- train_data |> pull(Has.Sleep.Disorder) |> factor(levels = c(0, 1), labels = c("No", "Yes"))
 
-X_val <- val_data %>% select(-1, -(ncol(.)-1), -(ncol(.)))
-y_val <- val_data %>% pull(last_col()) %>% factor(levels = c(0, 1), labels = c("No", "Yes"))
+X_val <- val_data |> select(-Has.Sleep.Disorder)
+y_val <- val_data |> pull(Has.Sleep.Disorder) |> factor(levels = c(0, 1), labels = c("No", "Yes"))
 
-X_test <- test_data %>% select(-1, -(ncol(.)-1), -(ncol(.)))
-y_test <- test_data %>% pull(last_col()) %>% factor(levels = c(0, 1), labels = c("No", "Yes"))
+X_test <- test_data |> select(-Has.Sleep.Disorder)
+y_test <- test_data |> pull(Has.Sleep.Disorder) |> factor(levels = c(0, 1), labels = c("No", "Yes"))
 
 # define train controls
 ctrl <- trainControl(method = "cv",
+                     number = 5,
                      summaryFunction = twoClassSummary,
                      classProbs = TRUE,
                      savePredictions = TRUE)
@@ -194,6 +206,7 @@ max_weights_needed <- (num_inputs + 1) * num_hidden + (num_hidden + 1) * num_out
 set.seed(123)
 nnet_model <- train(x = X_train, y = y_train,
                     method = "nnet",
+                    preProcess = c("center", "scale"),
                     tuneGrid = nnetGrid,
                     trControl = ctrl,
                     metric = "ROC",

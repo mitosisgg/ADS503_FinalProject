@@ -79,11 +79,12 @@ corrplot(cor_matrix, method = "circle", type = "upper", tl.col = "black", tl.cex
 sleep_data <- sleep_data %>%
   mutate(Has.Sleep.Disorder = ifelse(Sleep.Disorder == "None", 0, 1))
 
+# Inspect class ratio
+table(sleep_data$Has.Sleep.Disorder)
 ```
 
 ```{r}
 #Show relationship between numeric predictors and Binary outcome
-
 numeric_features <- sleep_data %>%
   select(where(is.numeric)) %>%
   select(-Person.ID, -Has.Sleep.Disorder) %>%
@@ -101,6 +102,19 @@ grid.arrange(grobs = plot_list, ncol = 3, nrow = ceiling(length(plot_list)/3))
 
 
 ```
+
+
+## Pre-processing
+
+```{r}
+# impute with KNN, center, and scale the data
+preprocess_model <- preProcess(X.train, method = c("knnImpute")
+
+# apply preprocess to train and test sets
+X.train.pp <- predict(preprocess_model, newdata = X.train)
+X.test.pp <- predict(preprocess_model, newdata = X.test)
+```
+
 
 ```{r}
 # Data splitting
@@ -125,6 +139,4 @@ val_data <- train_val_data[-train_split, ]
 prop.table(table(train_data$Has.Sleep.Disorder))
 prop.table(table(val_data$Has.Sleep.Disorder))
 prop.table(table(test_data$Has.Sleep.Disorder))
-
-
 ```

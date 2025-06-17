@@ -117,25 +117,18 @@ grid.arrange(grobs = plot_list, ncol = 3, nrow = ceiling(length(plot_list)/3))
 ```{r}
 # Data splitting
 # Set seed for reproducibility
-
 set.seed(123)
 
 # Create binary target variable
 sleep_data$Has.Sleep.Disorder <- ifelse(sleep_data$Sleep.Disorder == "None", 0, 1)
 
-# Initial stratified split: 75% for training + validation, 25% for testing
-initial_split <- createDataPartition(sleep_data$Has.Sleep.Disorder, p = 0.75, list = FALSE)
-train_val_data <- sleep_data[initial_split, ]
-test_data <- sleep_data[-initial_split, ]
-
-# Second stratified split: 80% of train_val_data for training, 20% for validation
-train_split <- createDataPartition(train_val_data$Has.Sleep.Disorder, p = 0.8, list = FALSE)
-train_data <- train_val_data[train_split, ]
-val_data <- train_val_data[-train_split, ]
+# Stratified split: 75% for training, 25% for testing
+split_index <- createDataPartition(sleep_data$Has.Sleep.Disorder, p = 0.75, list = FALSE)
+train_data <- sleep_data[split_index, ]
+test_data <- sleep_data[-split_index, ]
 
 # Check proportions
 prop.table(table(train_data$Has.Sleep.Disorder))
-prop.table(table(val_data$Has.Sleep.Disorder))
 prop.table(table(test_data$Has.Sleep.Disorder))
 
 

@@ -40,7 +40,6 @@ head(sleep_data)
 # Summarize Data Set
 skim(sleep_data)
 ```
-
 ```{r}
 #Numeric Feature Distributions
 sleep_data |>
@@ -124,9 +123,6 @@ df <- bind_cols(dummy_data, sleep_data)
 # drop the unused features
 df <- df |> select(-Blood.Pressure, -Person.ID, -Gender, -Occupation, -BMI.Category, -Sleep.Disorder)
 ```
-
-
-
 ## Data splitting
 
 ```{r}
@@ -134,45 +130,38 @@ df <- df |> select(-Blood.Pressure, -Person.ID, -Gender, -Occupation, -BMI.Categ
 # Set seed for reproducibility
 set.seed(123)
 
-# Initial stratified split: 75% for training + validation, 25% for testing
+# Stratified split: 75% training, 25% testing
 train_idx <- createDataPartition(df$Has.Sleep.Disorder, p = 0.75, list = FALSE)
-train_val_data <- df[train_idx, ]
-test_data <- df[-train_idx, ]
+train_data <- df[train_idx, ]
+test_data  <- df[-train_idx, ]
 
-# Second stratified split: 80% of train_val_data for training, 20% for validation
-val_idx <- createDataPartition(train_val_data$Has.Sleep.Disorder, p = 0.8, list = FALSE)
-train_data <- train_val_data[val_idx, ]
-val_data <- train_val_data[-val_idx, ]
-
-# Check proportions
+# Check class balance
 prop.table(table(train_data$Has.Sleep.Disorder))
-prop.table(table(val_data$Has.Sleep.Disorder))
 prop.table(table(test_data$Has.Sleep.Disorder))
-```
 
+```
 ## Model Development 
 
 ### Setup 
 
 ```{r}
-# separate predictors from target in train, val and test sets
+# Separate predictors from target in train and test sets
 X_train <- train_data |> select(-Has.Sleep.Disorder) 
 y_train <- train_data |> pull(Has.Sleep.Disorder) |> factor(levels = c(0, 1), labels = c("No", "Yes"))
-
-X_val <- val_data |> select(-Has.Sleep.Disorder)
-y_val <- val_data |> pull(Has.Sleep.Disorder) |> factor(levels = c(0, 1), labels = c("No", "Yes"))
 
 X_test <- test_data |> select(-Has.Sleep.Disorder)
 y_test <- test_data |> pull(Has.Sleep.Disorder) |> factor(levels = c(0, 1), labels = c("No", "Yes"))
 
-# define train controls
-ctrl <- trainControl(method = "cv",
-                     number = 5,
-                     summaryFunction = twoClassSummary,
-                     classProbs = TRUE,
-                     savePredictions = TRUE)
+# Define train controls
+ctrl <- trainControl(
+  method = "cv",
+  number = 5,
+  summaryFunction = twoClassSummary,
+  classProbs = TRUE,
+  savePredictions = TRUE
+)
 
-# evaluation metrics data frame                     
+# Create evaluation metrics data frame
 eval_df <- data.frame(
   Model = character(),
   Accuracy = numeric(),
@@ -185,6 +174,7 @@ eval_df <- data.frame(
   AUC = numeric(),
   stringsAsFactors = FALSE
 )
+
 ```
 
 ### Logistic Regression
@@ -201,20 +191,18 @@ logit_model <- train(
      trControl = ctrl
 )
 
-# Confusion Matrix
-logit_cm <- confusionMatrix(
-  logit_model$pred$pred, 
-  logit_model$pred$obs
-)
+# Predict on test data
+logit_preds <- predict(logit_model, X_test)
+logit_probs <- predict(logit_model, X_test, type = "prob")[, "Yes"]
 
-#Predict on val data
-logit_preds <- predict(logit_model, X_val)
-logit_obs <- y_val
+# Format predictions and true labels
 logit_preds <- factor(logit_preds, levels = c("No", "Yes"))
-logit_obs   <- factor(logit_obs,   levels = c("No", "Yes"))
+logit_obs   <- factor(y_test, levels = c("No", "Yes"))
 
-logit_probs <- predict(logit_model, X_val, type = "prob")[, "Yes"]
+# Confusion matrix
+logit_cm <- confusionMatrix(logit_preds, logit_obs, positive = "Yes")
 
+# Metrics
 logit_accuracy <- logit_cm$overall["Accuracy"]
 logit_error_rate <- 1 - logit_accuracy
 logit_sensitivity <- logit_cm$byClass["Sensitivity"]
@@ -223,11 +211,11 @@ logit_precision <- logit_cm$byClass["Precision"]
 logit_recall <- logit_sensitivity
 logit_f1 <- logit_cm$byClass["F1"]
 
-# ROC
-logit_roc <- roc(logit_model$pred$obs, logit_model$pred$Yes)
+# ROC & AUC
+logit_roc <- roc(response = logit_obs, predictor = logit_probs)
 logit_auc <- auc(logit_roc)
 
-# Add eval metrics to summary df
+# Add to evaluation dataframe
 eval_df <- rbind(eval_df, data.frame(
   Model       = "Logistic Regression",
   Accuracy    = as.numeric(logit_accuracy),
@@ -244,8 +232,8 @@ eval_df <- rbind(eval_df, data.frame(
 # Print confusion matrix
 logit_cm
 
-#Plot ROC Curve
-plot(logit_roc, main = "Logit ROC Curve", col = "purple", lwd = 3, xlim = c(1,0), ylim = c(0,1))
+# Plot ROC Curve
+plot(logit_roc, main = "Logistic Regression ROC Curve (Test Set)", col = "purple", lwd = 3, xlim = c(1,0), ylim = c(0,1))
 abline(a = 0, b = 1, lty = 2, col = "gray")  
 text(0.6, 0.2, paste0("AUC = ", round(logit_auc, 3)), cex = 1.2)
 ```
@@ -253,7 +241,7 @@ text(0.6, 0.2, paste0("AUC = ", round(logit_auc, 3)), cex = 1.2)
 ### Neural Network
 
 ```{r, message=FALSE, warning=FALSE}
-#Train Model
+# Create grid and weight limit
 nnetGrid <- expand.grid(decay = c(0, 0.01, .1, .5, 1), 
                         size = c(1, 3, 7, 11, 13))
 max_size <- max(nnetGrid$size)
@@ -264,6 +252,7 @@ num_outputs <- length(levels(y_train))
 
 max_weights_needed <- (num_inputs + 1) * num_hidden + (num_hidden + 1) * num_outputs
 
+# Train the model
 set.seed(123)
 nnet_model <- train(x = X_train, y = y_train,
                     method = "nnet",
@@ -276,15 +265,14 @@ nnet_model <- train(x = X_train, y = y_train,
                     MaxNWts = max_weights_needed,
                     maxit = 1000)
 
-#Predict on val data
-nnet_preds <- predict(nnet_model, X_val)
-nnet_obs <- y_val
+# --- TEST SET EVALUATION ---
+nnet_preds <- predict(nnet_model, X_test)
+nnet_obs <- y_test
 nnet_preds <- factor(nnet_preds, levels = c("No", "Yes"))
 nnet_obs   <- factor(nnet_obs,   levels = c("No", "Yes"))
 
-nnet_probs <- predict(nnet_model, X_val, type = "prob")[, "Yes"]
+nnet_probs <- predict(nnet_model, X_test, type = "prob")[, "Yes"]
 
-#Calculate metrics for eval_df
 nnet_cm <- confusionMatrix(nnet_preds, nnet_obs, positive = "Yes")
 
 nnet_accuracy <- nnet_cm$overall["Accuracy"]
@@ -311,13 +299,14 @@ eval_df <- rbind(eval_df, data.frame(
   stringsAsFactors = FALSE
 ))
 
-#Print Confusion Matrix 
+# Print confusion matrix
 nnet_cm
 
-#Plot ROC Curve
-plot(nnet_roc, main = "Neural Network ROC Curve", col = "steelblue", lwd = 3, xlim = c(1,0), ylim = c(0,1))
+# Plot ROC Curve
+plot(nnet_roc, main = "Neural Network ROC Curve (Test Set)", col = "steelblue", lwd = 3, xlim = c(1,0), ylim = c(0,1))
 abline(a = 0, b = 1, lty = 2, col = "gray")  
 text(0.6, 0.2, paste0("AUC = ", round(nnet_auc, 3)), cex = 1.2)
+
 ```
 
 ### RANDOM FOREST
@@ -332,46 +321,31 @@ rf_model <- train(
   trControl = ctrl,
   metric = "ROC"
 )
+# Predict on train set
+rf_train_preds <- predict(rf_model, X_train)
+rf_train_probs <- predict(rf_model, X_train, type = "prob")[, "Yes"]
 
-# Predict on validation set
-rf_preds <- predict(rf_model, X_val)
-rf_probs <- predict(rf_model, X_val, type = "prob")[, "Yes"]
+# Evaluate performance on train set
+rf_train_cm <- confusionMatrix(rf_train_preds, y_train, positive = "Yes")
 
-# Evaluate performance
-rf_cm <- confusionMatrix(rf_preds, y_val, positive = "Yes")
+rf_train_accuracy <- rf_train_cm$overall["Accuracy"]
+rf_train_error_rate <- 1 - rf_train_accuracy
+rf_train_sensitivity <- rf_train_cm$byClass["Sensitivity"]
+rf_train_specificity <- rf_train_cm$byClass["Specificity"]
+rf_train_precision <- rf_train_cm$byClass["Precision"]
+rf_train_recall <- rf_train_sensitivity
+rf_train_f1 <- rf_train_cm$byClass["F1"]
 
-rf_accuracy <- rf_cm$overall["Accuracy"]
-rf_error_rate <- 1 - rf_accuracy
-rf_sensitivity <- rf_cm$byClass["Sensitivity"]
-rf_specificity <- rf_cm$byClass["Specificity"]
-rf_precision <- rf_cm$byClass["Precision"]
-rf_recall <- rf_sensitivity
-rf_f1 <- rf_cm$byClass["F1"]
-
-rf_roc <- roc(response = y_val, predictor = rf_probs)
-rf_auc <- auc(rf_roc)
-
-# Add to evaluation data frame
-eval_df <- rbind(eval_df, data.frame(
-  Model       = "Random Forest",
-  Accuracy    = as.numeric(rf_accuracy),
-  Error_Rate  = as.numeric(rf_error_rate),
-  Specificity = as.numeric(rf_specificity),
-  Sensitivity = as.numeric(rf_sensitivity),
-  Precision   = as.numeric(rf_precision),
-  Recall      = as.numeric(rf_recall),
-  F1_Score    = as.numeric(rf_f1),
-  AUC         = as.numeric(rf_auc),
-  stringsAsFactors = FALSE
-))
+rf_train_roc <- roc(response = y_train, predictor = rf_train_probs)
+rf_train_auc <- auc(rf_train_roc)
 
 # Print Confusion Matrix
-rf_cm
+rf_train_cm
 
-# Plot ROC Curve
-plot(rf_roc, main = "Random Forest ROC Curve (Train Data)", col = "darkgreen", lwd = 3, xlim = c(1,0), ylim = c(0,1))
+# Plot ROC Curve for train set
+plot(rf_train_roc, main = "Random Forest ROC Curve (Train Data)", col = "darkblue", lwd = 3, xlim = c(1, 0), ylim = c(0, 1))
 abline(a = 0, b = 1, lty = 2, col = "gray")
-text(0.6, 0.2, paste0("AUC = ", round(rf_auc, 3)), cex = 1.2)
+text(0.6, 0.2, paste0("AUC = ", round(rf_train_auc, 3)), cex = 1.2)
 
 ```
 ```{r}

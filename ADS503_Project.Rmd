@@ -378,4 +378,16 @@ text(0.6, 0.2, paste0("AUC = ", round(rf_auc, 3)), cex = 1.2)
 ## Model Evaluation 
 ```{r}
 eval_df |> arrange(desc(F1_Score))
+
+eval_long <- eval_df |>
+  pivot_longer(cols = -Model, names_to = "Metric", values_to = "Value")
+
+# Plot
+ggplot(eval_long, aes(x = Metric, y = Value, fill = Model)) +
+  geom_bar(stat = "identity", position = "dodge") +
+  theme_minimal() +
+  labs(title = "Model Performance Comparison",
+       x = "Metric",
+       y = "Value") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
 ```

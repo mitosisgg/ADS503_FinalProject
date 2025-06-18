@@ -367,6 +367,20 @@ rf_test_f1 <- rf_test_cm$byClass["F1"]
 rf_test_roc <- roc(response = y_test, predictor = rf_test_probs)
 rf_test_auc <- auc(rf_test_roc)
 
+# Add Random Forest (Test) results to evaluation data frame
+eval_df <- rbind(eval_df, data.frame(
+  Model       = "Random Forest",
+  Accuracy    = as.numeric(rf_test_accuracy),
+  Error_Rate  = as.numeric(rf_test_error_rate),
+  Specificity = as.numeric(rf_test_specificity),
+  Sensitivity = as.numeric(rf_test_sensitivity),
+  Precision   = as.numeric(rf_test_precision),
+  Recall      = as.numeric(rf_test_recall),
+  F1_Score    = as.numeric(rf_test_f1),
+  AUC         = as.numeric(rf_test_auc),
+  stringsAsFactors = FALSE
+))
+
 # Print Confusion Matrix
 rf_test_cm
 

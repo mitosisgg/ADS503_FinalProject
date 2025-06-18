@@ -369,10 +369,37 @@ eval_df <- rbind(eval_df, data.frame(
 rf_cm
 
 # Plot ROC Curve
-plot(rf_roc, main = "Random Forest ROC Curve", col = "darkgreen", lwd = 3, xlim = c(1,0), ylim = c(0,1))
+plot(rf_roc, main = "Random Forest ROC Curve (Train Data)", col = "darkgreen", lwd = 3, xlim = c(1,0), ylim = c(0,1))
 abline(a = 0, b = 1, lty = 2, col = "gray")
 text(0.6, 0.2, paste0("AUC = ", round(rf_auc, 3)), cex = 1.2)
 
+```
+```{r}
+# Predict on test set
+rf_test_preds <- predict(rf_model, X_test)
+rf_test_probs <- predict(rf_model, X_test, type = "prob")[, "Yes"]
+
+# Evaluate performance on test set
+rf_test_cm <- confusionMatrix(rf_test_preds, y_test, positive = "Yes")
+
+rf_test_accuracy <- rf_test_cm$overall["Accuracy"]
+rf_test_error_rate <- 1 - rf_test_accuracy
+rf_test_sensitivity <- rf_test_cm$byClass["Sensitivity"]
+rf_test_specificity <- rf_test_cm$byClass["Specificity"]
+rf_test_precision <- rf_test_cm$byClass["Precision"]
+rf_test_recall <- rf_test_sensitivity
+rf_test_f1 <- rf_test_cm$byClass["F1"]
+
+rf_test_roc <- roc(response = y_test, predictor = rf_test_probs)
+rf_test_auc <- auc(rf_test_roc)
+
+# Print Confusion Matrix
+rf_test_cm
+
+# Plot ROC Curve for test set
+plot(rf_test_roc, main = "Random Forest ROC Curve (Test Data)", col = "darkred", lwd = 3, xlim = c(1, 0), ylim = c(0, 1))
+abline(a = 0, b = 1, lty = 2, col = "gray")
+text(0.6, 0.2, paste0("AUC = ", round(rf_test_auc, 3)), cex = 1.2)
 ```
 
 ## Model Evaluation 

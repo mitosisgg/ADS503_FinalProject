@@ -121,7 +121,7 @@ dummy_data <- as.data.frame(dummy_data)
 df <- bind_cols(dummy_data, sleep_data)
 
 # drop the unused features
-df <- df |> select(-Blood.Pressure, -Person.ID, -Gender, -Occupation, -BMI.Category, -Sleep.Disorder)
+df <- df |> select(-Blood.Pressure, -Person.ID, -Gender, -Occupation, -BMI.Category, -Quality.of.Sleep, -Sleep.Disorder)
 ```
 ## Data splitting
 
@@ -187,7 +187,7 @@ logit_model <- train(
      metric = "ROC",
      method = "glm",
      family = "binomial",
-     preProcess = c("zv", "center", "scale"),
+     preProcess = c("center", "scale"),
      trControl = ctrl
 )
 

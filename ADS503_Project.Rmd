@@ -40,6 +40,7 @@ head(sleep_data)
 # Summarize Data Set
 skim(sleep_data)
 ```
+
 ```{r}
 #Numeric Feature Distributions
 sleep_data |>
@@ -101,6 +102,7 @@ grid.arrange(grobs = plot_list, ncol = 3, nrow = ceiling(length(plot_list)/3))
 ```
 
 ## Feature Engineering
+
 ```{r}
 # create systolic and diastolic features from Blood.Pressure
 split_bp <- do.call(rbind, strsplit(sleep_data$Blood.Pressure, "/"))
@@ -123,6 +125,7 @@ df <- bind_cols(dummy_data, sleep_data)
 # drop the unused features
 df <- df |> select(-Blood.Pressure, -Person.ID, -Gender, -Occupation, -BMI.Category, -Quality.of.Sleep, -Sleep.Disorder)
 ```
+
 ## Data splitting
 
 ```{r}
@@ -140,9 +143,10 @@ prop.table(table(train_data$Has.Sleep.Disorder))
 prop.table(table(test_data$Has.Sleep.Disorder))
 
 ```
-## Model Development 
 
-### Setup 
+## Model Development
+
+### Setup
 
 ```{r}
 # Separate predictors from target in train and test sets
@@ -348,6 +352,7 @@ abline(a = 0, b = 1, lty = 2, col = "gray")
 text(0.6, 0.2, paste0("AUC = ", round(rf_train_auc, 3)), cex = 1.2)
 
 ```
+
 ```{r}
 # Predict on test set
 rf_test_preds <- predict(rf_model, X_test)
@@ -390,7 +395,8 @@ abline(a = 0, b = 1, lty = 2, col = "gray")
 text(0.6, 0.2, paste0("AUC = ", round(rf_test_auc, 3)), cex = 1.2)
 ```
 
-## Model Evaluation 
+## Model Evaluation
+
 ```{r}
 eval_df |> arrange(desc(F1_Score))
 
@@ -405,4 +411,26 @@ ggplot(eval_long, aes(x = Metric, y = Value, fill = Model)) +
        x = "Metric",
        y = "Value") +
   theme(axis.text.x = element_text(angle = 45, hjust = 1))
+```
+
+```{r}
+
+plot(logit_roc, 
+     main = "ROC Curves on Test Set", 
+     col = "purple", 
+     lwd = 3, 
+     xlim = c(1, 0), 
+     ylim = c(0, 1))
+
+lines(nnet_roc, col = "steelblue", lwd = 3)
+lines(rf_test_roc, col = "darkred", lwd = 3)
+abline(a = 0, b = 1, lty = 2, col = "gray")
+
+legend("bottomright", 
+       legend = c(paste0("Logistic (AUC = ", round(logit_auc, 3), ")"),
+                  paste0("Neural Net (AUC = ", round(nnet_auc, 3), ")"),
+                  paste0("Random Forest (AUC = ", round(rf_test_auc, 3), ")")),
+       col = c("purple", "steelblue", "darkred"), 
+       lwd = 3)
+
 ```
